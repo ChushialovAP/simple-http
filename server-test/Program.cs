@@ -8,6 +8,8 @@ namespace servertest
 {
     class MainClass
     {
+        public static string res {get; set;}
+
         public static void Main(string[] args)
         {
             string port = Console.ReadLine();
@@ -27,17 +29,18 @@ namespace servertest
             Console.WriteLine("Listening...");
             while (true)
             {
+                if (!listener.IsListening) { return; }
                 // Note: The GetContext method blocks while waiting for a request.
                 HttpListenerContext context = listener.GetContext();
 
-                HandleContext(context);
+                HandleContext(context, listener);
 
                 
             }
             //listener.Stop();
         }
 
-        private static void HandleContext(HttpListenerContext context)
+        private static void HandleContext(HttpListenerContext context, HttpListener listener)
         {
             HttpListenerRequest request = context.Request;
 
@@ -65,50 +68,77 @@ namespace servertest
 
             response.StatusCode = (int)HttpStatusCode.OK;
 
-            string responseString;
+            string responseString = "error";
             byte[] responseBody;
             switch (method)
             {
                 case "/Ping":
+                    responseString = $"{HttpStatusCode.OK}";
                     break;
                 case "/GetInputData":
 
                     responseString = serializedInput;//,\"Output\":{\"SumResult\":30.30,\"MulResult\":4,\"SortedInputs\":[1.0,1.01,2.02,4.0]}}";
-                    responseBody = System.Text.Encoding.UTF8.GetBytes(responseString);
-                    response.ContentType = "application/json; charset=utf-8";
-                    response.ContentEncoding = Encoding.UTF8;
-                    response.ContentLength64 = responseBody.Length;
-                    response.OutputStream.Write(responseBody, 0, responseBody.Length);
             
                     break;
                 case "/WriteAnswer":
 
-                    string body;
-                    using (var reader = new StreamReader(request.InputStream,
-                                     request.ContentEncoding))
-                    {
-                        body = reader.ReadToEnd();
-                    }
+                    string body = request.QueryString["answer"];
+                    body = body.Trim('"');
+                   // Input desBody = dataSerializer.Deserialized(body);
+                    //using (var reader = new StreamReader(request.InputStream,
+                    //                 request.ContentEncoding))
+                    //{
+                    //    body = reader.ReadToEnd();
+                    //}
 
                     string text = @"{""answer"": false}";
+
+                    Console.WriteLine(body);
+                    Console.WriteLine(dataSerializer.Serialized(output));
 
                     if (body == dataSerializer.Serialized(output))
                     {
                         text = @"{""answer"": true}";
                     }
                     responseString = text;//,\"Output\":{\"SumResult\":30.30,\"MulResult\":4,\"SortedInputs\":[1.0,1.01,2.02,4.0]}}";
-                    responseBody = System.Text.Encoding.UTF8.GetBytes(responseString);
-                    response.ContentType = "application/json; charset=utf-8";
-                    response.ContentEncoding = Encoding.UTF8;
-                    response.ContentLength64 = responseBody.Length;
-                    response.OutputStream.Write(responseBody, 0, responseBody.Length);
+                    
 
 
+                    break;
+                case "/PostInputData":
+                    using (var reader = new StreamReader(request.InputStream,
+                                     request.ContentEncoding))
+                    {
+                        res = reader.ReadToEnd();
+                    }
+                    break;
+                case "/GetAnswer":
+
+                    if (res == null)
+                    {
+                        break;
+                    }
+
+                    Input reqInput = dataSerializer.Deserialized(res);
+                    Output respOutput = dataSerializer.GetAnswer(reqInput);
+
+                    responseString = dataSerializer.Serialized(respOutput);//,\"Output\":{\"SumResult\":30.30,\"MulResult\":4,\"SortedInputs\":[1.0,1.01,2.02,4.0]}}";
+
+                    break;
+                case "/Stop":
+                    listener.Stop();
+                    Console.WriteLine("server stopped");
                     break;
                 default:
                     response.StatusCode = (int)HttpStatusCode.NotFound;
                     break;
             }
+
+            responseBody = System.Text.Encoding.UTF8.GetBytes(responseString);
+            response.ContentType = "application/json; charset=utf-8";
+            response.ContentEncoding = Encoding.UTF8;
+            response.ContentLength64 = responseBody.Length;
+            response.OutputStream.Write(responseBody, 0, responseBody.Length);
 
             response.Close();
 
